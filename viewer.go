@@ -18,6 +18,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -168,12 +169,30 @@ func streamParts(ctx context.Context, wg *sync.WaitGroup, url string) <-chan *by
 
 const BlankDuration = 15 * time.Second
 
+func disableBlanking() error {
+	log.Infof("Disabling screen blanking")
+	if err := exec.Command("/usr/bin/xset", "-display", ":0", "s", "off").Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("/usr/bin/xset", "-display", ":0", "-dpms").Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("/usr/bin/xset", "-display", ":0", "s", "noblank").Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	flag.Parse()
 
 	config, err := loadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	if err := disableBlanking(); err != nil {
+		log.Fatalf("Failed to disable blanking: %v", err)
 	}
 
 	wg := &sync.WaitGroup{}
