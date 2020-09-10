@@ -166,7 +166,7 @@ func streamParts(ctx context.Context, wg *sync.WaitGroup, url string) <-chan *by
 	return ch
 }
 
-const BlankDuration = 5 * time.Second
+const BlankDuration = 15 * time.Second
 
 func main() {
 	flag.Parse()
@@ -194,20 +194,25 @@ func main() {
 
 	vbox := gtk.NewVBox(false, 1)
 
+	connecting := gtk.NewLabel("Connecting...")
+	connecting.ModifyFontEasy("DejaVu Serif 40")
+	connecting.SetMarkup(`<span foreground="white">Connecting...</span>`)
+	vbox.Add(connecting)
+
 	imageBox := gtk.NewImage()
+	imageBox.Hide()
 	vbox.Add(imageBox)
 
 	parts := streamParts(ctx, wg, config.MJPEGURL)
 
-
-	blank := time.NewTicker(BlankDuration)
+	blank := time.NewTicker(time.Second)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		for ctx.Err() == nil {
-			blank.Reset(BlankDuration)
 			select {
 			case b := <-parts:
+				blank.Reset(BlankDuration)
 				img, err := jpeg.Decode(b, &jpeg.DecoderOptions{
 					ScaleTarget: image.Rectangle{
 						Min: image.Point{X: 0, Y: 0},
@@ -226,6 +231,7 @@ func main() {
 				pb := toPixbuf(img)
 
 				gdk.ThreadsEnter()
+				connecting.Hide()
 				imageBox.Show()
 				imageBox.SetFromPixbuf(pb)
 				gdk.ThreadsLeave()
@@ -233,6 +239,7 @@ func main() {
 			case <-blank.C:
 				gdk.ThreadsEnter()
 				imageBox.Hide()
+				connecting.Show()
 				gdk.ThreadsLeave()
 
 			case <-ctx.Done():
