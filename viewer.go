@@ -3,31 +3,31 @@ package main
 import (
 	"bytes"
 	"context"
-	"sync"
-	"strings"
-	"mime"
-	"image"
-	"image/draw"
-	"os"
-	"fmt"
-	"github.com/mattn/go-gtk/gdkpixbuf"
-	"github.com/pixiv/go-libjpeg/jpeg"
 	"encoding/json"
-	"net/http"
 	"flag"
+	"fmt"
+	"github.com/mattn/go-gtk/gdk"
+	"github.com/mattn/go-gtk/gdkpixbuf"
 	"github.com/mattn/go-gtk/glib"
 	"github.com/mattn/go-gtk/gtk"
-	"github.com/mattn/go-gtk/gdk"
+	"github.com/pixiv/go-libjpeg/jpeg"
+	log "github.com/sirupsen/logrus"
+	"image"
+	"image/draw"
+	"mime"
 	"mime/multipart"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
 	"time"
-	 log "github.com/sirupsen/logrus"
 )
 
 var configPath = flag.String("config", "", "Path to the configuration file (required)")
 
 type Config struct {
-	Width int `json:"width"`
-	Height int `json:"height"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
 	MJPEGURL string `json:"mjpeg_url"`
 }
 
@@ -49,7 +49,7 @@ func loadConfig() (*Config, error) {
 }
 
 type bufImage struct {
-	pb *gdkpixbuf.Pixbuf
+	pb   *gdkpixbuf.Pixbuf
 	rgba *image.RGBA
 }
 
@@ -67,7 +67,7 @@ func newBufImage(bounds image.Rectangle) *bufImage {
 
 	pb := gdkpixbuf.NewPixbufFromData(pbd)
 	return &bufImage{
-		pb: pb,
+		pb:   pb,
 		rgba: rgba,
 	}
 }
@@ -104,7 +104,7 @@ func streamParts(ctx context.Context, wg *sync.WaitGroup, url string) <-chan *by
 		defer close(ch)
 		defer wg.Done()
 		first := true
-		OUTER:
+	OUTER:
 		for ctx.Err() == nil {
 			if first {
 				log.Infof("Connecting to %q", url)
@@ -156,7 +156,7 @@ func streamParts(ctx context.Context, wg *sync.WaitGroup, url string) <-chan *by
 				}
 
 				select {
-				case ch <- b:  // write downstream
+				case ch <- b: // write downstream
 				default:
 					bufPool.Put(b) // discard
 				}
@@ -218,9 +218,9 @@ func main() {
 						Min: image.Point{X: 0, Y: 0},
 						Max: image.Point{X: config.Width, Y: config.Height},
 					},
-					DisableBlockSmoothing: true,
+					DisableBlockSmoothing:  true,
 					DisableFancyUpsampling: true,
-					DCTMethod: jpeg.DCTIFast,
+					DCTMethod:              jpeg.DCTIFast,
 				})
 				bufPool.Put(b)
 				if err != nil {
