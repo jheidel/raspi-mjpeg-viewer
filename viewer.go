@@ -11,6 +11,7 @@ import (
 	"github.com/mattn/go-gtk/glib"
 	"github.com/mattn/go-gtk/gtk"
 	"github.com/pixiv/go-libjpeg/jpeg"
+	"github.com/recws-org/recws"
 	log "github.com/sirupsen/logrus"
 	"image"
 	"image/draw"
@@ -27,9 +28,10 @@ import (
 var configPath = flag.String("config", "", "Path to the configuration file (required)")
 
 type Config struct {
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	MJPEGURL string `json:"mjpeg_url"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	MJPEGURL  string `json:"mjpeg_url"`
+	NotifyURL string `json:"notify_url"`
 }
 
 func loadConfig() (*Config, error) {
@@ -198,7 +200,39 @@ func main() {
 	wg := &sync.WaitGroup{}
 	ctx := context.Background()
 
-	log.Infof("Starting")
+	log.Infof("Starting Websocket listener")
+
+	ws := recws.RecConn{
+		KeepAliveTimeout: 10 * time.Second,
+	}
+	ws.Dial(config.NotifyURL, nil)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		go func() {
+			<-ctx.Done()
+			ws.Close()
+		}()
+		for ctx.Err() == nil {
+			_, _, err := ws.ReadMessage()
+			if err != nil {
+				log.Errorf("Failed to read from websocket: %v", err)
+				time.Sleep(time.Second)
+				continue
+			}
+
+			log.Infof("Got message on notify socket")
+
+			if err := exec.Command("/usr/bin/aplay", "/home/pi/motion.wav").Run(); err != nil {
+				log.Errorf("Failed to play notify sound %v", err)
+			}
+		}
+	}()
+
+	// ------
+
+	log.Infof("Starting UI")
 	gtk.Init(&os.Args)
 	gdk.ThreadsInit()
 
