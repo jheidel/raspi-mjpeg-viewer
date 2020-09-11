@@ -18,6 +18,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/exec"
 	"strings"
@@ -248,6 +249,13 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	go func() {
+		// Http server for profile handlers
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			log.Fatalf("Failed to bind debug handler")
+		}
+	}()
 
 	if err := disableBlanking(); err != nil {
 		log.Fatalf("Failed to disable blanking: %v", err)
