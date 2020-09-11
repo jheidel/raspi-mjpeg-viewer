@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"github.com/mattn/go-gtk/gdk"
 	"github.com/mattn/go-gtk/gdkpixbuf"
 	"github.com/mattn/go-gtk/glib"
 	"github.com/mattn/go-gtk/gtk"
 	"github.com/pixiv/go-libjpeg/jpeg"
-	"github.com/recws-org/recws"
 	log "github.com/sirupsen/logrus"
 	"image"
 	"image/draw"
@@ -185,6 +185,66 @@ func disableBlanking() error {
 	return nil
 }
 
+func streamNotifyOnce(ctx context.Context, url string, ch chan<- bool) error {
+	c, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		return fmt.Errorf("Failed to dial: %v", err)
+	}
+
+	log.Infof("Connected to notify socket!")
+	ticker := time.NewTicker(10 * time.Second)
+	var wg sync.WaitGroup
+	defer func() {
+		ticker.Stop()
+		wg.Wait()
+		c.Close()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for _ = range ticker.C {
+			c.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			if err := c.WriteMessage(websocket.PingMessage, nil); err != nil {
+				log.Errorf("Failed to write ping: %v", err)
+			}
+		}
+	}()
+
+	c.SetReadDeadline(time.Now().Add(time.Minute))
+	c.SetPongHandler(func(string) error {
+		c.SetReadDeadline(time.Now().Add(time.Minute))
+		return nil
+	})
+
+	for ctx.Err() == nil {
+		_, _, err := c.ReadMessage()
+		if err != nil {
+			return err
+		}
+		ch <- true // notify!
+	}
+
+	return nil
+}
+
+func streamNotify(ctx context.Context, wg *sync.WaitGroup, url string) <-chan bool {
+	ch := make(chan bool)
+	wg.Add(1)
+	go func() {
+		defer close(ch)
+		defer wg.Done()
+		for ctx.Err() == nil {
+			log.Infof("Connecting to notify socket %v", url)
+			if err := streamNotifyOnce(ctx, url, ch); err != nil {
+				log.Errorf("Disconnect notify socket: %v", err)
+				time.Sleep(time.Second)
+			}
+		}
+	}()
+	return ch
+}
+
 func main() {
 	flag.Parse()
 
@@ -202,26 +262,12 @@ func main() {
 
 	log.Infof("Starting Websocket listener")
 
-	ws := recws.RecConn{
-		KeepAliveTimeout: 10 * time.Second,
-	}
-	ws.Dial(config.NotifyURL, nil)
+	notifies := streamNotify(ctx, wg, config.NotifyURL)
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		go func() {
-			<-ctx.Done()
-			ws.Close()
-		}()
-		for ctx.Err() == nil {
-			_, _, err := ws.ReadMessage()
-			if err != nil {
-				log.Errorf("Failed to read from websocket: %v", err)
-				time.Sleep(time.Second)
-				continue
-			}
-
+		for _ = range notifies {
 			log.Infof("Got message on notify socket")
 
 			if err := exec.Command("/usr/bin/aplay", "/home/pi/motion.wav").Run(); err != nil {
