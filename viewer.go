@@ -193,27 +193,23 @@ func streamNotifyOnce(ctx context.Context, url string, ch chan<- bool) error {
 
 	log.Infof("Connected to notify socket!")
 	ticker := time.NewTicker(10 * time.Second)
-	var wg sync.WaitGroup
 	defer func() {
 		ticker.Stop()
-		wg.Wait()
 		c.Close()
 	}()
 
-	wg.Add(1)
 	go func() {
-		defer wg.Done()
 		for _ = range ticker.C {
 			c.SetWriteDeadline(time.Now().Add(10 * time.Second))
 			if err := c.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Errorf("Failed to write ping: %v", err)
+				return
 			}
 		}
 	}()
 
-	c.SetReadDeadline(time.Now().Add(time.Minute))
+	c.SetReadDeadline(time.Now().Add(15 * time.Second))
 	c.SetPongHandler(func(string) error {
-		c.SetReadDeadline(time.Now().Add(time.Minute))
+		c.SetReadDeadline(time.Now().Add(15 * time.Second))
 		return nil
 	})
 
