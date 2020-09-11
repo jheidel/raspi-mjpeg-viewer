@@ -14,7 +14,6 @@ import (
 	"github.com/pixiv/go-libjpeg/jpeg"
 	log "github.com/sirupsen/logrus"
 	"image"
-	"image/draw"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -50,46 +49,6 @@ func loadConfig() (*Config, error) {
 		return nil, err
 	}
 	return c, nil
-}
-
-type bufImage struct {
-	pb   *gdkpixbuf.Pixbuf
-	rgba *image.RGBA
-}
-
-func newBufImage(bounds image.Rectangle) *bufImage {
-	rgba := image.NewRGBA(bounds)
-
-	var pbd gdkpixbuf.PixbufData
-	pbd.Colorspace = gdkpixbuf.GDK_COLORSPACE_RGB
-	pbd.HasAlpha = true
-	pbd.BitsPerSample = 8
-	pbd.Width = rgba.Bounds().Max.X
-	pbd.Height = rgba.Bounds().Max.Y
-	pbd.RowStride = rgba.Stride
-	pbd.Data = rgba.Pix
-
-	pb := gdkpixbuf.NewPixbufFromData(pbd)
-	return &bufImage{
-		pb:   pb,
-		rgba: rgba,
-	}
-}
-
-var buf1, buf2 *bufImage
-
-func toPixbuf(src image.Image) *gdkpixbuf.Pixbuf {
-	b := src.Bounds()
-	if buf1 == nil || buf2 == nil {
-		buf1 = newBufImage(b)
-		buf2 = newBufImage(b)
-	}
-	m := buf1
-	buf1 = buf2
-	buf2 = m
-
-	draw.Draw(m.rgba, m.rgba.Bounds(), src, b.Min, draw.Src)
-	return m.pb
 }
 
 var bufPool = sync.Pool{
@@ -316,7 +275,7 @@ func main() {
 			select {
 			case b := <-parts:
 				blank.Reset(BlankDuration)
-				img, err := jpeg.Decode(b, &jpeg.DecoderOptions{
+				rgba, err := jpeg.DecodeIntoRGBA(b, &jpeg.DecoderOptions{
 					ScaleTarget: image.Rectangle{
 						Min: image.Point{X: 0, Y: 0},
 						Max: image.Point{X: config.Width, Y: config.Height},
@@ -331,7 +290,15 @@ func main() {
 					continue
 				}
 
-				pb := toPixbuf(img)
+				var pbd gdkpixbuf.PixbufData
+				pbd.Colorspace = gdkpixbuf.GDK_COLORSPACE_RGB
+				pbd.HasAlpha = true
+				pbd.BitsPerSample = 8
+				pbd.Width = rgba.Bounds().Max.X
+				pbd.Height = rgba.Bounds().Max.Y
+				pbd.RowStride = rgba.Stride
+				pbd.Data = rgba.Pix
+				pb := gdkpixbuf.NewPixbufFromData(pbd)
 
 				gdk.ThreadsEnter()
 				connecting.Hide()
