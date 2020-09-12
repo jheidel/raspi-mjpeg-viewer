@@ -12,6 +12,7 @@ import (
 	"github.com/mattn/go-gtk/glib"
 	"github.com/mattn/go-gtk/gtk"
 	"github.com/pixiv/go-libjpeg/jpeg"
+	"github.com/nfnt/resize"
 	log "github.com/sirupsen/logrus"
 	"image"
 	"mime"
@@ -25,7 +26,10 @@ import (
 	"time"
 )
 
-var configPath = flag.String("config", "", "Path to the configuration file (required)")
+var (
+	configPath = flag.String("config", "", "Path to the configuration file (required)")
+	exactScale = flag.Bool("exact_scale", false, "Whether exact scaling should be used (slows down framerate)")
+)
 
 type Config struct {
 	Width     int    `json:"width"`
@@ -273,6 +277,10 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+
+		start := time.Now()
+		frames := 0
+
 		for ctx.Err() == nil {
 			select {
 			case b := <-parts:
@@ -292,6 +300,14 @@ func main() {
 					continue
 				}
 
+				if *exactScale {
+					var ok bool
+					rgba, ok = resize.Resize(uint(config.Width), uint(config.Height), rgba, resize.NearestNeighbor).(*image.RGBA)
+					if !ok {
+						log.Fatalf("Expected rgba image from resize")
+					}
+				}
+
 				var pbd gdkpixbuf.PixbufData
 				pbd.Colorspace = gdkpixbuf.GDK_COLORSPACE_RGB
 				pbd.HasAlpha = true
@@ -307,6 +323,11 @@ func main() {
 				imageBox.Show()
 				imageBox.SetFromPixbuf(pb)
 				gdk.ThreadsLeave()
+
+				frames++
+				if frames % 10 == 0 {
+					log.Debugf("Displaying at %.2f FPS", float32(frames) / float32(time.Since(start) / time.Second))
+				}
 
 			case <-blank.C:
 				gdk.ThreadsEnter()
