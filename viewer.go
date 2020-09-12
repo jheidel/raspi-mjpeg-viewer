@@ -225,19 +225,21 @@ func main() {
 
 	log.Infof("Starting Websocket listener")
 
-	notifies := streamNotify(ctx, wg, config.NotifyURL)
+	if config.NotifyURL != "" {
+		notifies := streamNotify(ctx, wg, config.NotifyURL)
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for _ = range notifies {
-			log.Infof("Got message on notify socket")
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for _ = range notifies {
+				log.Infof("Got message on notify socket")
 
-			if err := exec.Command("/usr/bin/aplay", "/home/pi/motion.wav").Run(); err != nil {
-				log.Errorf("Failed to play notify sound %v", err)
+				if err := exec.Command("/usr/bin/aplay", "/home/pi/motion.wav").Run(); err != nil {
+					log.Errorf("Failed to play notify sound %v", err)
+				}
 			}
-		}
-	}()
+		}()
+	}
 
 	// ------
 
