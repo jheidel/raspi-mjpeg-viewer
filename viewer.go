@@ -11,8 +11,8 @@ import (
 	"github.com/mattn/go-gtk/gdkpixbuf"
 	"github.com/mattn/go-gtk/glib"
 	"github.com/mattn/go-gtk/gtk"
-	"github.com/pixiv/go-libjpeg/jpeg"
 	"github.com/nfnt/resize"
+	"github.com/pixiv/go-libjpeg/jpeg"
 	log "github.com/sirupsen/logrus"
 	"image"
 	"mime"
@@ -21,6 +21,7 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -114,10 +115,22 @@ func streamParts(ctx context.Context, wg *sync.WaitGroup, url string) <-chan *by
 					log.Errorf("failed read: %v", err)
 					continue OUTER
 				}
+
+				var bodyLen int
+				if lens := part.Header.Get("Content-Length"); lens != "" {
+					bodyLen, _ = strconv.Atoi(lens)
+				}
+
 				b := bufPool.Get().(*bytes.Buffer)
 				b.Reset()
 				if _, err := b.ReadFrom(part); err != nil {
 					log.Errorf("failed read: %v", err)
+					bufPool.Put(b)
+					continue OUTER
+				}
+
+				if bodyLen > 0 && b.Len() < bodyLen {
+					log.Debugf("Discarding truncated part, got %d expected %d", b.Len(), bodyLen)
 					bufPool.Put(b)
 					continue OUTER
 				}
@@ -325,8 +338,8 @@ func main() {
 				gdk.ThreadsLeave()
 
 				frames++
-				if frames % 10 == 0 {
-					log.Debugf("Displaying at %.2f FPS", float32(frames) / float32(time.Since(start) / time.Second))
+				if frames%10 == 0 {
+					log.Debugf("Displaying at %.2f FPS", float32(frames)/float32(time.Since(start)/time.Second))
 				}
 
 			case <-blank.C:
