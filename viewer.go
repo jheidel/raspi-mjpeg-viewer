@@ -251,7 +251,7 @@ func main() {
 			for _ = range notifies {
 				log.Infof("Got message on notify socket")
 
-				if err := exec.Command("/usr/bin/aplay", "/home/pi/motion.wav").Run(); err != nil {
+				if err := exec.Command("/usr/bin/aplay", "/home/pi/media/motion.wav").Run(); err != nil {
 					log.Errorf("Failed to play notify sound %v", err)
 				}
 			}
